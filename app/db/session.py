@@ -3,19 +3,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import declarative_base
 from app.core.config import settings
 
-# Engine configuration tailored for Neon / PostgreSQL
-# 'pool_pre_ping=True' validates connection liveliness before executing statements
+# Disable prepared statement caching to prevent InvalidCachedStatementError across schema migrations
 engine = create_async_engine(
     settings.async_database_url,
     echo=False,
     future=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=15,
+    max_overflow=25,
     pool_pre_ping=True,
-    pool_recycle=300,  # Recycle connections every 5 minutes for serverless backends
     connect_args={
-        "ssl": "require"
-    }
+        "prepared_statement_cache_size": 0,
+        "statement_cache_size": 0,
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -28,7 +27,6 @@ AsyncSessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
-# FastAPI dependency injection context
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
