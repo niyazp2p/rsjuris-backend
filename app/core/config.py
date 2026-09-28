@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     PROJECT_NAME: str = "RS Juris & Co. Legal API"
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = "default_secret_key_change_in_production"
+    SECRET_KEY: str = "a8b0a41ecfcde6460a3e5e680b191991ef0f8916f865060225bd3664521f62cf"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
