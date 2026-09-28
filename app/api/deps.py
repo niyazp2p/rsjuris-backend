@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import app.models
 from app.core.config import settings
-from app.core.security import pwd_context
 from app.db.session import get_db
 from app.models.user import User
 from app.models.enums import Role

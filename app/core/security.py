@@ -6,8 +6,8 @@ from app.core.config import settings
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Directly verify password using bcrypt without passlib wrapper.
-    Truncates to 72 bytes to conform to bcrypt specifications.
+    Directly verify passwords using the native bcrypt library.
+    Truncates to 72 bytes to conform with bcrypt limitations.
     """
     if not plain_password or not hashed_password:
         return False
@@ -20,7 +20,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """
-    Hash a plaintext password directly with bcrypt.
+    Hash a plaintext password directly with bcrypt (12 rounds).
     """
     pw_bytes = password.encode("utf-8")[:72]
     salt = bcrypt.gensalt(rounds=12)
