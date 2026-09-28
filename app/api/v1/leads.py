@@ -24,7 +24,6 @@ from app.api.deps import RequireRole, get_current_user
 
 router = APIRouter(prefix="/leads", tags=["Lead Management & Case Ledger"])
 
-# Access: Super Admin, Senior Partner, and Inquiry Officer
 allow_lead_officers = RequireRole([
     Role.SUPER_ADMIN,
     Role.SENIOR_PARTNER,
@@ -48,7 +47,10 @@ async def list_leads(
 ):
     query = (
         select(Lead)
-        .options(selectinload(Lead.remarks).selectinload(LeadRemark.author))
+        .options(
+            selectinload(Lead.remarks).selectinload(LeadRemark.author),
+            selectinload(Lead.assigned_to)
+        )
         .order_by(desc(Lead.created_at))
     )
 
@@ -69,13 +71,6 @@ async def list_leads(
 
     result = await db.execute(query.offset(skip).limit(limit))
     leads = result.scalars().all()
-
-    # Flatten author names onto remark response objects
-    for lead in leads:
-        for remark in lead.remarks:
-            if remark.author:
-                remark.author_name = remark.author.full_name
-
     return leads
 
 @router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(allow_lead_officers)])
@@ -117,16 +112,15 @@ async def create_lead_manually(
 
     await db.commit()
 
-    # Re-fetch with relations
     res = await db.execute(
         select(Lead)
-        .options(selectinload(Lead.remarks).selectinload(LeadRemark.author))
+        .options(
+            selectinload(Lead.remarks).selectinload(LeadRemark.author),
+            selectinload(Lead.assigned_to)
+        )
         .where(Lead.id == lead.id)
     )
-    created = res.scalar_one()
-    for rem in created.remarks:
-        rem.author_name = current_user.full_name
-    return created
+    return res.scalar_one()
 
 @router.post("/convert-enquiry/{enquiry_id}", response_model=LeadResponse, dependencies=[Depends(allow_lead_officers)])
 async def convert_enquiry_to_lead(
@@ -176,13 +170,13 @@ async def convert_enquiry_to_lead(
 
     res = await db.execute(
         select(Lead)
-        .options(selectinload(Lead.remarks).selectinload(LeadRemark.author))
+        .options(
+            selectinload(Lead.remarks).selectinload(LeadRemark.author),
+            selectinload(Lead.assigned_to)
+        )
         .where(Lead.id == lead.id)
     )
-    created = res.scalar_one()
-    for rem in created.remarks:
-        rem.author_name = current_user.full_name
-    return created
+    return res.scalar_one()
 
 @router.get("/{lead_id}", response_model=LeadResponse, dependencies=[Depends(allow_lead_officers)])
 async def get_lead_details(
@@ -191,17 +185,15 @@ async def get_lead_details(
 ):
     result = await db.execute(
         select(Lead)
-        .options(selectinload(Lead.remarks).selectinload(LeadRemark.author))
+        .options(
+            selectinload(Lead.remarks).selectinload(LeadRemark.author),
+            selectinload(Lead.assigned_to)
+        )
         .where(Lead.id == lead_id)
     )
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-
-    for rem in lead.remarks:
-        if rem.author:
-            rem.author_name = rem.author.full_name
-
     return lead
 
 @router.patch("/{lead_id}", response_model=LeadResponse, dependencies=[Depends(allow_lead_officers)])
@@ -212,7 +204,10 @@ async def update_lead_details(
 ):
     result = await db.execute(
         select(Lead)
-        .options(selectinload(Lead.remarks).selectinload(LeadRemark.author))
+        .options(
+            selectinload(Lead.remarks).selectinload(LeadRemark.author),
+            selectinload(Lead.assigned_to)
+        )
         .where(Lead.id == lead_id)
     )
     lead = result.scalar_one_or_none()
@@ -225,11 +220,6 @@ async def update_lead_details(
 
     await db.commit()
     await db.refresh(lead)
-
-    for rem in lead.remarks:
-        if rem.author:
-            rem.author_name = rem.author.full_name
-
     return lead
 
 @router.post("/{lead_id}/remarks", response_model=LeadRemarkResponse, dependencies=[Depends(allow_lead_officers)])
@@ -260,10 +250,14 @@ async def add_lead_remark_and_upgrade_status(
         lead.status = payload.next_status
 
     await db.commit()
-    await db.refresh(remark)
-
-    remark.author_name = current_user.full_name
-    return remark
+    
+    # Reload with author relation for response serialization
+    res = await db.execute(
+        select(LeadRemark)
+        .options(selectinload(LeadRemark.author))
+        .where(LeadRemark.id == remark.id)
+    )
+    return res.scalar_one()
 
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(RequireRole([Role.SUPER_ADMIN]))])
 async def delete_lead(
