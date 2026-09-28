@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Text, DateTime, Enum as SQLEnum
+from sqlalchemy.orm import relationship
 from app.db.session import Base
 from app.models.enums import EnquiryStatus, MatterType
 
@@ -43,3 +44,6 @@ class Enquiry(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # 1-to-1 relationship with Lead (resolves mapper back_populates crash)
+    lead = relationship("Lead", back_populates="enquiry", uselist=False)
