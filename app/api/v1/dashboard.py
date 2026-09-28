@@ -1,4 +1,5 @@
 from collections import Counter
+from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -22,7 +23,6 @@ from app.api.deps import RequireRole
 
 router = APIRouter(prefix="/dashboard", tags=["Executive Dashboard Analytics"])
 
-# Accessible by all internal roles (Admin, Senior Partner, Associate, Inquiry Officer)
 allow_chamber_staff = RequireRole([
     Role.SUPER_ADMIN,
     Role.SENIOR_PARTNER,
@@ -37,9 +37,7 @@ allow_chamber_staff = RequireRole([
     summary="Get Chamber Master Executive Metrics",
 )
 async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    # -------------------------------------------------------------------------
-    # 1. Pipeline Counters (Enquiries & Leads)
-    # -------------------------------------------------------------------------
+    # 1. Pipeline Counters
     total_enquiries = await db.scalar(select(func.count(Enquiry.id))) or 0
     new_enquiries = await db.scalar(
         select(func.count(Enquiry.id)).where(Enquiry.status == EnquiryStatus.NEW)
@@ -56,9 +54,7 @@ async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
         select(func.count(Lead.id)).where(Lead.status == LeadStatus.IN_LITIGATION)
     ) or 0
 
-    # -------------------------------------------------------------------------
-    # 2. Editorial Counters (Articles)
-    # -------------------------------------------------------------------------
+    # 2. Editorial Counters
     total_articles = await db.scalar(select(func.count(Article.id))) or 0
     published_articles = await db.scalar(
         select(func.count(Article.id)).where(Article.status == ContentStatus.PUBLISHED)
@@ -70,9 +66,7 @@ async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
         select(func.count(Article.id)).where(Article.status == ContentStatus.PENDING_REVIEW)
     ) or 0
 
-    # -------------------------------------------------------------------------
     # 3. Audience Segmentation Ratio
-    # -------------------------------------------------------------------------
     indiv_leads = await db.scalar(
         select(func.count(Lead.id)).where(Lead.audience == AudienceSegment.INDIVIDUAL)
     ) or 0
@@ -84,9 +78,7 @@ async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
     indiv_pct = round((indiv_leads / audience_total) * 100, 1) if audience_total > 0 else 0.0
     biz_pct = round((biz_leads / audience_total) * 100, 1) if audience_total > 0 else 0.0
 
-    # -------------------------------------------------------------------------
-    # 4. Practice Concentration (Grouped aggregation across Leads)
-    # -------------------------------------------------------------------------
+    # 4. Practice Concentration
     lead_practices_res = await db.execute(
         select(Lead.practice_area, func.count(Lead.id))
         .group_by(Lead.practice_area)
@@ -97,9 +89,7 @@ async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
         for row in lead_practices_res.all()
     ]
 
-    # -------------------------------------------------------------------------
-    # 5. Activity Feed Aggregation (Chronological Union of Enquiries & Remarks)
-    # -------------------------------------------------------------------------
+    # 5. Activity Feed Aggregation
     recent_enquiries_res = await db.execute(
         select(Enquiry).order_by(desc(Enquiry.created_at)).limit(5)
     )
@@ -116,21 +106,23 @@ async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
     activity: List[ActivityFeedItem] = []
 
     for enq in recent_enquiries:
+        matter_val = enq.matter_type.value if hasattr(enq.matter_type, "value") else str(enq.matter_type)
+        status_val = enq.status.value if hasattr(enq.status, "value") else str(enq.status)
         activity.append(
             ActivityFeedItem(
                 id=enq.id,
                 type="ENQUIRY_RECEIVED",
                 title=f"Web Intake: {enq.full_name}",
-                subtitle=f"{enq.matter_type.value if hasattr(enq.matter_type, 'value') else enq.matter_type} • Ref: {enq.reference_number}",
+                subtitle=f"{matter_val} • Ref: {enq.reference_number}",
                 timestamp=enq.created_at,
-                badge=enq.status.value if hasattr(enq.status, "value") else str(enq.status),
+                badge=status_val,
             )
         )
 
     for rem in recent_remarks:
         lead_num = rem.lead.lead_number if rem.lead else "Matter"
         author_name = rem.author.full_name if rem.author else "Advocate"
-        status_label = f"Upgraded to {rem.next_status}" if rem.next_status else "Remark Added"
+        status_label = f"Upgraded to {rem.next_status.value if hasattr(rem.next_status, 'value') else rem.next_status}" if rem.next_status else "Remark Added"
         activity.append(
             ActivityFeedItem(
                 id=rem.id,
@@ -142,7 +134,6 @@ async def get_chamber_dashboard_stats(db: AsyncSession = Depends(get_db)):
             )
         )
 
-    # Sort chronological items descending
     activity.sort(key=lambda x: x.timestamp, reverse=True)
 
     return DashboardMetricsResponse(
