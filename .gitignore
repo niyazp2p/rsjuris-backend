@@ -1,0 +1,9 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.pytest_cache/
+*.sqlite3
+create_cms_neon.sql
